@@ -4,7 +4,7 @@ import com.intellij.codeInspection.ProblemHighlightType
 import com.intellij.lang.annotation.{Annotation, AnnotationHolder}
 import com.intellij.psi.{PsiElement, PsiMethod, PsiModifier, PsiModifierListOwner}
 import org.jetbrains.plugins.scala.ScalaBundle
-import org.jetbrains.plugins.scala.annotator.quickfix.modifiers.{AddModifierQuickFix, AddModifierWithValOrVarQuickFix, RemoveModifierQuickFix}
+import org.jetbrains.plugins.scala.annotator.quickfix.modifiers.{AddModifierQuickFix, AddModifierWithValOrVarQuickFix, NewDummyRemoveModifierQuickFix, RemoveModifierQuickFix}
 import org.jetbrains.plugins.scala.extensions._
 import org.jetbrains.plugins.scala.lang.psi.ScalaPsiUtil
 import org.jetbrains.plugins.scala.lang.psi.api.base.ScFieldId
@@ -26,6 +26,7 @@ import org.jetbrains.plugins.scala.statistics.{FeatureKey, Stats}
  * User: Alexander Podkhalyuzin
  * Date: 30.01.12
  */
+//noinspection ComparingLength,TypeAnnotation
 
 trait OverridingAnnotator {
   private def isConcreteElement(element: PsiElement): Boolean = {
@@ -114,6 +115,8 @@ trait OverridingAnnotator {
           ScalaBundle.message("member.overrides.nothing", memberType, member.name))
         annotation.setHighlightType(ProblemHighlightType.GENERIC_ERROR_OR_WARNING)
         annotation.registerFix(new RemoveModifierQuickFix(owner, "override"))
+        annotation.registerFix(new NewDummyRemoveModifierQuickFix(owner, "override"))
+
       }
     } else if (isConcreteElement(ScalaPsiUtil.nameContext(member))) {
       var isConcretes = false
