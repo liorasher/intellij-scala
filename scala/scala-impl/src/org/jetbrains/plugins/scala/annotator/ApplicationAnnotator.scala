@@ -6,6 +6,7 @@ import com.intellij.psi.{PsiElement, PsiMethod, PsiNamedElement, PsiParameter}
 import org.jetbrains.plugins.scala.annotator.AnnotatorUtils.registerTypeMismatchError
 import org.jetbrains.plugins.scala.annotator.createFromUsage._
 import org.jetbrains.plugins.scala.annotator.importsTracker.ImportTracker
+import org.jetbrains.plugins.scala.annotator.quickfix.params.AddParamToMethodQuickFix
 import org.jetbrains.plugins.scala.codeInspection.varCouldBeValInspection.ValToVarQuickFix
 import org.jetbrains.plugins.scala.extensions._
 import org.jetbrains.plugins.scala.lang.psi.ScalaPsiUtil
@@ -204,7 +205,8 @@ trait ApplicationAnnotator {
 
   protected def registerCreateFromUsageFixesFor(ref: ScReferenceElement, annotation: Annotation) {
     ref match {
-      case (exp: ScReferenceExpression) childOf (_: ScMethodCall) =>
+      case (exp: ScReferenceExpression) childOf (methodCall: ScMethodCall) =>
+        annotation.registerFix(new AddParamToMethodQuickFix(exp, methodCall))
         annotation.registerFix(new CreateMethodQuickFix(exp))
         if (ref.refName.headOption.exists(_.isUpper))
           annotation.registerFix(new CreateCaseClassQuickFix(exp))
