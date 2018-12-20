@@ -14,11 +14,11 @@ import org.jetbrains.plugins.scala.lang.psi.api.base.{ScLiteral, ScMethodLike, S
 import org.jetbrains.plugins.scala.lang.psi.api.expr.{ScMethodCall, ScReferenceExpression}
 import org.jetbrains.plugins.scala.lang.psi.api.statements.ScFunction
 import org.jetbrains.plugins.scala.lang.psi.api.toplevel.imports.ScImportSelectors
-import org.jetbrains.plugins.scala.lang.psi.api.toplevel.typedef.{ScMember, ScObject}
+import org.jetbrains.plugins.scala.lang.psi.api.toplevel.typedef.{ScMember, ScObject, ScTypeDefinition}
 import org.jetbrains.plugins.scala.lang.psi.types.ScType
 import org.jetbrains.plugins.scala.lang.psi.types.api.StdTypes
 import org.jetbrains.plugins.scala.lang.refactoring.changeSignature.changeInfo.ScalaChangeInfo
-import org.jetbrains.plugins.scala.lang.refactoring.changeSignature.{ScalaChangeSignatureProcessor, ScalaParameterInfo}
+import org.jetbrains.plugins.scala.lang.refactoring.changeSignature.{ScalaChangeSignatureHandler, ScalaChangeSignatureProcessor, ScalaParameterInfo}
 import org.jetbrains.plugins.scala.lang.resolve.ScalaResolveResult
 import org.jetbrains.plugins.scala.lang.resolve.processor.DynamicResolveProcessor
 import org.jetbrains.plugins.scala.project.ProjectContext
@@ -43,7 +43,7 @@ class AddParamToMethodQuickFix(reference: ScReferenceElement, methodCall: ScMeth
 
   override def getText: String = {
     val methodName = maybeTargetMethod.map(_.getName).getOrElse("Method")
-    s"Add new param to '$methodName'"
+    s"Add new param(s) to '$methodName'"
   }
 
   override def invoke(projectT: Project, editor: Editor, psiFile: PsiFile): Unit = {
@@ -68,7 +68,6 @@ class AddParamToMethodQuickFix(reference: ScReferenceElement, methodCall: ScMeth
     }
     processor.run()
 
-    println("")
     ApplicationManager.getApplication.runWriteAction(() => UndoUtil.markPsiFileForUndo(psiFile))
   }
 
@@ -90,30 +89,33 @@ class AddParamToMethodQuickFix(reference: ScReferenceElement, methodCall: ScMeth
       case _ => return None
     }
 
-    val newMethod: ScMethodLike = targets.toSeq.head.asInstanceOf[ScMethodLike]
-    Some(newMethod)
+    val newMethod: Option[ScMethodLike] = targets.toList match {
+      case Nil => None
+      case xh::Nil => Some(xh.asInstanceOf[ScMethodLike])
+      case _ => None
+    }
+
+    newMethod
   }
 
   private def createNewParameters(newMethod: ScMethodLike): Seq[Seq[ScalaParameterInfo]] = {
-    // TODO: find a way to add not only as last param
-    Seq(existingParams(newMethod) :+ newParam(uniqueName(existingParams(newMethod).map(_.name).toSet)))
-  }
-
-  @scala.annotation.tailrec
-  private def uniqueName(existingNames: Set[String], suffix: Int = 0): String = {
-    val suggested = "param" + (if (suffix == 0) "" else String.valueOf(suffix))
-    if (!existingNames.contains(suggested)) suggested else uniqueName(existingNames, suffix + 1)
+    val existingParamInfo = existingParams(newMethod)
+    val newArgs = methodCall.args.getChildren.toList.drop(existingParamInfo.size)
+    val newCreatedParams = Seq(existingParamInfo ++ newArgs.map(newArg => newParam(newArg.getText, newArg)))
+    newCreatedParams
   }
 
   private def existingParams(newMethod: ScMethodLike): Seq[ScalaParameterInfo] = {
-    newMethod.parameterList.clauses.map(_.parameters.map(new ScalaParameterInfo(_))).head
+//    this means that we're not supporting currying at the moment..
+
+    ScalaParameterInfo.allForMethod(newMethod).headOption.getOrElse(Seq.empty)
   }
 
-  private def newParam(newParamName: String) = {
+  private def newParam(newParamName: String, psiElement: PsiElement) = {
     new ScalaParameterInfo(
       name = newParamName,
       oldIndex = -1,
-      scType = argumentTypeScType(methodCall.args.getChildren.last),
+      scType = argumentTypeScType(psiElement),
       project = reference.projectContext,
       isRepeatedParameter = false,
       isByName = false)
@@ -166,10 +168,11 @@ class AddParamToMethodQuickFix(reference: ScReferenceElement, methodCall: ScMeth
 
     val set = references.flatMap(isReferencedFrom)
     val packageRequired = isRequired(set)(_.fromPackage)
-    val packageObjectRequired = isRequired(set)(_.fromPackageObject)
+    val packageObjectRequired: Boolean = isRequired(set)(_.fromPackageObject)
 
-    (if (packageRequired) Some(pkg) else None) ++
-      (if (packageObjectRequired) maybePackageObject else None)
+    val maybePackage = if (packageRequired) Some(pkg) else None
+    val anotherMaybePackage: Option[ScTypeDefinition] = if (packageObjectRequired) maybePackageObject else None
+    maybePackage ++ anotherMaybePackage
   }
 
   private[this] def isReferencedFrom(reference: ScReferenceElement): Option[IsReferenced] =
